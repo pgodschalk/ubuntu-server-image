@@ -11,7 +11,7 @@ on:
       - main
   release:
     types:
-      - published
+      - created
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -443,5 +443,11 @@ jobs:
             packer/packer-manifest-${{ matrix.arch }}.json \
             packer/ubuntu-server-image_${{ matrix.arch }}_SHA256SUMS.sha256 \
             packer/ubuntu-server-image_${{ matrix.arch }}_SHA256SUMS.sha256.sig
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Publish release
+        if: github.event.release.draft
+        run: gh release edit "${{ github.event.release.tag_name }}" --draft=false
         env:
           GH_TOKEN: ${{ github.token }}
