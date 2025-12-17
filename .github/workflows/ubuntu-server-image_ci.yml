@@ -344,8 +344,10 @@ jobs:
             output-ubuntu/ubuntu-server-image_${{ matrix.arch }}.qcow2
           mv output-ubuntu/efivars.fd \
             output-ubuntu/ubuntu-server-image_${{ matrix.arch }}_efivars.fd
-          mv packer_ubuntu_sha256.checksum \
-            ubuntu-server-image_${{ matrix.arch }}_SHA256SUMS.sha256
+          cd output-ubuntu && sha256sum \
+            ubuntu-server-image_${{ matrix.arch }}.qcow2 \
+            ubuntu-server-image_${{ matrix.arch }}_efivars.fd \
+            > ../ubuntu-server-image_${{ matrix.arch }}_SHA256SUMS.sha256
         working-directory: packer
 
       - name: Extract filesystem for SBOM generation
