@@ -3,6 +3,6 @@
 		"ini": ["**/fail2ban/*.local", "**/ufw/applications.d/*"],
 		"Plain Text": ["**/etc/issue", "**/etc/issue.net"],
 		"SSH Config": ["**/ssh_config.d/*.conf"],
-		"YAML": ["user-data", "meta-data"]
+		"YAML": ["user-data", "meta-data", "network-config"]
 	}
 }
