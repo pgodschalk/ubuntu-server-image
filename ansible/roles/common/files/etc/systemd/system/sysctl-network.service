@@ -1,0 +1,12 @@
+[Unit]
+Description=Apply network sysctl settings after network is online
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/sbin/sysctl --system
+
+[Install]
+WantedBy=multi-user.target

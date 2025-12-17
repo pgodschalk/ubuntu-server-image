@@ -1,0 +1,17 @@
+[Unit]
+Description=Temporary Directory /tmp
+Documentation=man:hier(7)
+Conflicts=umount.target
+Before=local-fs.target umount.target
+After=swap.target
+DefaultDependencies=no
+ConditionPathIsSymbolicLink=!/tmp
+
+[Mount]
+What=tmpfs
+Where=/tmp
+Type=tmpfs
+Options=mode=1777,strictatime,nosuid,nodev,noexec
+
+[Install]
+WantedBy=local-fs.target

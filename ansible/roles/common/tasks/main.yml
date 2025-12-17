@@ -1,0 +1,790 @@
+---
+# =============================================================================
+# Package management
+# =============================================================================
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+  register: common_apt_update
+  until: common_apt_update is success
+  retries: 12
+  delay: 10
+
+- name: Upgrade all packages
+  ansible.builtin.apt:
+    upgrade: dist
+  register: common_apt_upgrade
+  until: common_apt_upgrade is success
+  retries: 12
+  delay: 10
+
+- name: Check if snap is available
+  ansible.builtin.stat:
+    path: /usr/bin/snap
+  register: common_snap_available
+
+- name: Get current snap refresh schedule
+  ansible.builtin.command:
+    cmd: snap get system refresh.timer
+  when: common_snap_available.stat.exists
+  register: common_snap_refresh_timer
+  changed_when: false
+  failed_when: false
+
+- name: Configure snap refresh schedule
+  ansible.builtin.command:
+    cmd: snap set system refresh.timer=02:00-06:00
+  when:
+    - common_snap_available.stat.exists
+    - common_snap_refresh_timer.rc != 0 or common_snap_refresh_timer.stdout != "02:00-06:00"
+  changed_when: true
+
+- name: Check for snap refresh hold
+  ansible.builtin.command:
+    cmd: snap get system refresh.hold
+  when: common_snap_available.stat.exists
+  register: common_snap_refresh_hold
+  changed_when: false
+  failed_when: false
+
+- name: Clear any snap refresh holds
+  ansible.builtin.command:
+    cmd: snap unset system refresh.hold
+  when:
+    - common_snap_available.stat.exists
+    - common_snap_refresh_hold.rc == 0
+  changed_when: true
+
+- name: Refresh snap packages
+  ansible.builtin.command:
+    cmd: snap refresh
+  when: common_snap_available.stat.exists
+  register: common_snap_refresh
+  changed_when: "'All snaps up to date' not in common_snap_refresh.stderr"
+
+- name: Install apparmor-utils
+  ansible.builtin.apt:
+    name: apparmor-utils
+    state: present
+
+- name: Install fail2ban
+  ansible.builtin.apt:
+    name: fail2ban
+    state: present
+
+- name: Install libpam-pwquality
+  ansible.builtin.apt:
+    name: libpam-pwquality
+    state: present
+
+- name: Install AIDE
+  ansible.builtin.apt:
+    name:
+      - aide
+      - aide-common
+    state: present
+
+- name: Remove FTP packages
+  ansible.builtin.apt:
+    name:
+      - ftp
+      - tnftp
+    state: absent
+
+- name: Remove telnet packages
+  ansible.builtin.apt:
+    name:
+      - inetutils-telnet
+      - telnet
+    state: absent
+
+- name: Remove rsyslog (use journald only)
+  ansible.builtin.apt:
+    name: rsyslog
+    state: absent
+
+# =============================================================================
+# Unattended upgrades
+# =============================================================================
+
+- name: Enable all updates (not just security)
+  ansible.builtin.lineinfile:
+    line: '        "${distro_id}:${distro_codename}-updates";'
+    path: /etc/apt/apt.conf.d/50unattended-upgrades
+    regexp: '^//.*"\${distro_id}:\${distro_codename}-updates";'
+
+- name: Remove unused dependencies
+  ansible.builtin.lineinfile:
+    line: 'Unattended-Upgrade::Remove-Unused-Dependencies "true";'
+    path: /etc/apt/apt.conf.d/50unattended-upgrades
+    regexp: "^//Unattended-Upgrade::Remove-Unused-Dependencies"
+
+- name: Remove unused kernel packages
+  ansible.builtin.lineinfile:
+    line: 'Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";'
+    path: /etc/apt/apt.conf.d/50unattended-upgrades
+    regexp: "^//Unattended-Upgrade::Remove-Unused-Kernel-Packages"
+
+- name: Remove new unused dependencies
+  ansible.builtin.lineinfile:
+    line: 'Unattended-Upgrade::Remove-New-Unused-Dependencies "true";'
+    path: /etc/apt/apt.conf.d/50unattended-upgrades
+    regexp: "^//Unattended-Upgrade::Remove-New-Unused-Dependencies"
+
+- name: Enable automatic reboot
+  ansible.builtin.lineinfile:
+    line: 'Unattended-Upgrade::Automatic-Reboot "true";'
+    path: /etc/apt/apt.conf.d/50unattended-upgrades
+    regexp: '^//Unattended-Upgrade::Automatic-Reboot "false"'
+
+- name: Enable automatic reboot with users logged in
+  ansible.builtin.lineinfile:
+    line: 'Unattended-Upgrade::Automatic-Reboot-WithUsers "true";'
+    path: /etc/apt/apt.conf.d/50unattended-upgrades
+    regexp: "^//Unattended-Upgrade::Automatic-Reboot-WithUsers"
+
+- name: Set automatic reboot time
+  ansible.builtin.lineinfile:
+    line: 'Unattended-Upgrade::Automatic-Reboot-Time "02:00";'
+    path: /etc/apt/apt.conf.d/50unattended-upgrades
+    regexp: "^//Unattended-Upgrade::Automatic-Reboot-Time"
+
+# =============================================================================
+# AIDE (advanced intrusion detection environment)
+# =============================================================================
+
+- name: Initialize AIDE database
+  ansible.builtin.command:
+    cmd: aideinit
+    creates: /var/lib/aide/aide.db
+
+- name: Remove AIDE temporary database
+  ansible.builtin.file:
+    path: /var/lib/aide/aide.db.new
+    state: absent
+
+- name: Check AIDE database attributes
+  ansible.builtin.command:
+    cmd: lsattr -d /var/lib/aide/aide.db
+  register: common_aide_db_attrs
+  changed_when: false
+  tags:
+    - molecule-notest
+
+- name: Set AIDE database immutable
+  ansible.builtin.command:
+    cmd: chattr +i /var/lib/aide/aide.db
+  when: common_aide_db_attrs.stdout is not search('^....i')
+  changed_when: true
+  tags:
+    - molecule-notest
+
+- name: Install AIDE post-upgrade hook
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/99aide-update
+    mode: "0644"
+    src: etc/apt/apt.conf.d/99aide-update
+
+# =============================================================================
+# Postfix
+# =============================================================================
+
+- name: Configure postfix to listen on loopback only
+  ansible.builtin.lineinfile:
+    line: "inet_interfaces = loopback-only"
+    path: /etc/postfix/main.cf
+    regexp: "^#?inet_interfaces"
+  notify: Restart postfix
+
+# =============================================================================
+# Filesystem hardening
+# =============================================================================
+
+- name: Create tmp.mount systemd unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/tmp.mount
+    mode: "0644"
+    src: etc/systemd/system/tmp.mount
+  notify: Reload systemd
+
+- name: Enable tmp.mount
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+    enabled: true
+    name: tmp.mount
+
+- name: Harden /dev/shm mount options
+  ansible.posix.mount:
+    fstype: tmpfs
+    opts: defaults,nosuid,nodev,noexec
+    path: /dev/shm
+    src: tmpfs
+    state: mounted
+
+- name: Harden /boot mount options
+  ansible.posix.mount:
+    fstype: ext4
+    opts: defaults,nosuid,nodev
+    path: /boot
+    src: LABEL=BOOT
+    state: present
+
+# =============================================================================
+# Kernel hardening (sysctl)
+# =============================================================================
+
+- name: Install sysctl hardening configuration
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-hardening.conf
+    mode: "0644"
+    src: etc/sysctl.d/99-hardening.conf
+  notify: Apply sysctl settings
+  tags: molecule-idempotence-notest
+
+- name: Create sysctl reload service for network settings
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/sysctl-network.service
+    mode: "0644"
+    src: etc/systemd/system/sysctl-network.service
+
+- name: Enable sysctl-network service
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+    enabled: true
+    name: sysctl-network
+
+# =============================================================================
+# PAM configuration
+# =============================================================================
+
+- name: Remove nullok from common-auth
+  ansible.builtin.replace:
+    path: /etc/pam.d/common-auth
+    regexp: '\s+nullok'
+    replace: ""
+
+- name: Create pam_faillock config
+  ansible.builtin.copy:
+    dest: /usr/share/pam-configs/faillock
+    mode: "0644"
+    src: usr/share/pam-configs/faillock
+  notify: Update PAM
+
+- name: Create pam_faillock_notify config
+  ansible.builtin.copy:
+    dest: /usr/share/pam-configs/faillock_notify
+    mode: "0644"
+    src: usr/share/pam-configs/faillock_notify
+  notify: Update PAM
+
+- name: Create pam_pwquality config
+  ansible.builtin.copy:
+    dest: /usr/share/pam-configs/pwquality
+    mode: "0644"
+    src: usr/share/pam-configs/pwquality
+  notify: Update PAM
+
+- name: Create pam_pwhistory config
+  ansible.builtin.copy:
+    dest: /usr/share/pam-configs/pwhistory
+    mode: "0644"
+    src: usr/share/pam-configs/pwhistory
+  notify: Update PAM
+
+- name: Set faillock unlock_time
+  ansible.builtin.lineinfile:
+    line: "unlock_time = 900"
+    path: /etc/security/faillock.conf
+    regexp: "^#?\\s*unlock_time"
+
+- name: Disable core dumps
+  community.general.pam_limits:
+    dest: /etc/security/limits.d/99-disable-core.conf
+    domain: "*"
+    limit_item: core
+    limit_type: hard
+    value: "0"
+
+- name: Create sugroup
+  ansible.builtin.group:
+    name: sugroup
+    state: present
+
+- name: Restrict su to sugroup
+  ansible.builtin.lineinfile:
+    insertafter: "^auth\\s+sufficient\\s+pam_rootok.so"
+    line: "auth       required   pam_wheel.so use_uid group=sugroup"
+    path: /etc/pam.d/su
+    regexp: "^#?auth\\s+required\\s+pam_wheel.so"
+
+- name: Set sugroup as group for pam.d/su
+  ansible.builtin.file:
+    group: sugroup
+    path: /etc/pam.d/su
+
+# =============================================================================
+# Password quality (pwquality.conf)
+# =============================================================================
+
+- name: Set pwquality difok
+  ansible.builtin.lineinfile:
+    line: "difok = 2"
+    path: /etc/security/pwquality.conf
+    regexp: "^#?\\s*difok"
+
+- name: Set pwquality minlen
+  ansible.builtin.lineinfile:
+    line: "minlen = 14"
+    path: /etc/security/pwquality.conf
+    regexp: "^#?\\s*minlen"
+
+- name: Set pwquality minclass
+  ansible.builtin.lineinfile:
+    line: "minclass = 4"
+    path: /etc/security/pwquality.conf
+    regexp: "^#?\\s*minclass"
+
+- name: Set pwquality maxrepeat
+  ansible.builtin.lineinfile:
+    line: "maxrepeat = 3"
+    path: /etc/security/pwquality.conf
+    regexp: "^#?\\s*maxrepeat"
+
+- name: Set pwquality maxsequence
+  ansible.builtin.lineinfile:
+    line: "maxsequence = 3"
+    path: /etc/security/pwquality.conf
+    regexp: "^#?\\s*maxsequence"
+
+- name: Set pwquality enforce_for_root
+  ansible.builtin.lineinfile:
+    line: "enforce_for_root"
+    path: /etc/security/pwquality.conf
+    regexp: "^#?\\s*enforce_for_root"
+
+# =============================================================================
+# Login definitions (login.defs)
+# =============================================================================
+
+- name: Set PASS_MAX_DAYS
+  ansible.builtin.lineinfile:
+    line: "PASS_MAX_DAYS\t365"
+    path: /etc/login.defs
+    regexp: "^PASS_MAX_DAYS"
+
+- name: Set default umask
+  ansible.builtin.lineinfile:
+    line: "UMASK\t\t027"
+    path: /etc/login.defs
+    regexp: "^UMASK"
+
+# =============================================================================
+# Cron hardening
+# =============================================================================
+
+- name: Restrict crontab permissions
+  ansible.builtin.file:
+    mode: "0600"
+    path: /etc/crontab
+
+- name: Restrict cron.hourly permissions
+  ansible.builtin.file:
+    mode: "0700"
+    path: /etc/cron.hourly
+
+- name: Restrict cron.daily permissions
+  ansible.builtin.file:
+    mode: "0700"
+    path: /etc/cron.daily
+
+- name: Restrict cron.weekly permissions
+  ansible.builtin.file:
+    mode: "0700"
+    path: /etc/cron.weekly
+
+- name: Restrict cron.monthly permissions
+  ansible.builtin.file:
+    mode: "0700"
+    path: /etc/cron.monthly
+
+- name: Restrict cron.yearly permissions
+  ansible.builtin.file:
+    mode: "0700"
+    path: /etc/cron.yearly
+
+- name: Restrict cron.d permissions
+  ansible.builtin.file:
+    mode: "0700"
+    path: /etc/cron.d
+
+- name: Create cron.allow for root only
+  ansible.builtin.copy:
+    dest: /etc/cron.allow
+    mode: "0600"
+    owner: root
+    src: etc/cron.allow
+
+# =============================================================================
+# Firewall (UFW)
+# =============================================================================
+
+- name: UFW default deny incoming
+  community.general.ufw:
+    default: deny
+    direction: incoming
+
+- name: UFW default deny outgoing
+  community.general.ufw:
+    default: deny
+    direction: outgoing
+
+- name: UFW default deny routed
+  community.general.ufw:
+    default: deny
+    direction: routed
+
+- name: UFW allow loopback in
+  community.general.ufw:
+    direction: in
+    interface: lo
+    rule: allow
+
+- name: UFW allow loopback out
+  community.general.ufw:
+    direction: out
+    interface: lo
+    rule: allow
+
+- name: UFW deny spoofed loopback (IPv4)
+  community.general.ufw:
+    direction: in
+    from_ip: 127.0.0.0/8
+    rule: deny
+
+- name: UFW deny spoofed loopback (IPv6)
+  community.general.ufw:
+    direction: in
+    from_ip: ::1
+    rule: deny
+
+- name: Allow SSH through UFW
+  community.general.ufw:
+    name: OpenSSH
+    rule: allow
+
+- name: UFW allow all outbound
+  community.general.ufw:
+    direction: out
+    rule: allow
+
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled
+
+# =============================================================================
+# Fail2ban
+# =============================================================================
+
+- name: Configure fail2ban to use UFW (IPv4/IPv6)
+  ansible.builtin.copy:
+    dest: /etc/fail2ban/jail.local
+    mode: "0644"
+    src: etc/fail2ban/jail.local
+  notify: Restart fail2ban
+
+- name: Create fail2ban systemd override directory
+  ansible.builtin.file:
+    mode: "0755"
+    path: /etc/systemd/system/fail2ban.service.d
+    state: directory
+
+- name: Harden fail2ban systemd service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/fail2ban.service.d/override.conf
+    mode: "0644"
+    src: etc/systemd/system/fail2ban.service.d/override.conf
+  notify:
+    - Reload systemd
+    - Restart fail2ban
+
+# =============================================================================
+# SSH hardening
+# =============================================================================
+
+- name: Restrict sshd_config permissions
+  ansible.builtin.file:
+    mode: "0600"
+    path: /etc/ssh/sshd_config
+
+- name: Restrict sshd_config.d permissions
+  ansible.builtin.file:
+    mode: "0700"
+    path: /etc/ssh/sshd_config.d
+
+- name: Find sshd_config.d files
+  ansible.builtin.find:
+    paths: /etc/ssh/sshd_config.d
+    patterns: "*.conf"
+  register: common_sshd_config_d_files
+
+- name: Restrict sshd_config.d file permissions
+  ansible.builtin.file:
+    mode: "0600"
+    path: "{{ item.path }}"
+  loop: "{{ common_sshd_config_d_files.files }}"
+
+- name: Set SSH HostKey order
+  ansible.builtin.blockinfile:
+    block: |
+      HostKey /etc/ssh/ssh_host_ed25519_key
+      HostKey /etc/ssh/ssh_host_rsa_key
+      HostKey /etc/ssh/ssh_host_ecdsa_key
+    insertafter: "^#HostKey /etc/ssh/ssh_host_ed25519_key"
+    marker: "# {mark} ANSIBLE MANAGED - HostKey"
+    path: /etc/ssh/sshd_config
+  notify: Restart sshd
+
+- name: Restrict SSH to sudo group
+  ansible.builtin.lineinfile:
+    line: "AllowGroups sudo"
+    path: /etc/ssh/sshd_config
+    regexp: "^#?AllowGroups"
+  notify: Restart sshd
+
+- name: Set SSH banner
+  ansible.builtin.lineinfile:
+    line: "Banner /etc/issue.net"
+    path: /etc/ssh/sshd_config
+    regexp: "^#?Banner"
+  notify: Restart sshd
+
+- name: Set SSH KexAlgorithms
+  ansible.builtin.lineinfile:
+    insertafter: "^# Ciphers and keying"
+    # yamllint disable-line rule:line-length
+    line: "KexAlgorithms sntrup761x25519-sha512@openssh.com,curve25519-sha256@libssh.org,ecdh-sha2-nistp521,ecdh-sha2-nistp384,ecdh-sha2-nistp256,diffie-hellman-group-exchange-sha256"
+    path: /etc/ssh/sshd_config
+    regexp: "^#?KexAlgorithms"
+  notify: Restart sshd
+
+- name: Set SSH Ciphers
+  ansible.builtin.lineinfile:
+    insertafter: "^KexAlgorithms"
+    line: "Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr"
+    path: /etc/ssh/sshd_config
+    regexp: "^#?Ciphers"
+  notify: Restart sshd
+
+- name: Set SSH MACs
+  ansible.builtin.lineinfile:
+    insertafter: "^Ciphers"
+    line: "MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256,umac-128@openssh.com"
+    path: /etc/ssh/sshd_config
+    regexp: "^#?MACs"
+  notify: Restart sshd
+
+- name: Set SSH ClientAliveInterval
+  ansible.builtin.lineinfile:
+    line: "ClientAliveInterval 15"
+    path: /etc/ssh/sshd_config
+    regexp: "^#?ClientAliveInterval"
+  notify: Restart sshd
+
+- name: Set SSH LoginGraceTime
+  ansible.builtin.lineinfile:
+    line: "LoginGraceTime 60"
+    path: /etc/ssh/sshd_config
+    regexp: "^#?LoginGraceTime"
+  notify: Restart sshd
+
+- name: Set SSH MaxAuthTries
+  ansible.builtin.lineinfile:
+    line: "MaxAuthTries 4"
+    path: /etc/ssh/sshd_config
+    regexp: "^#?MaxAuthTries"
+  notify: Restart sshd
+
+- name: Set SSH MaxStartups
+  ansible.builtin.lineinfile:
+    line: "MaxStartups 10:30:60"
+    path: /etc/ssh/sshd_config
+    regexp: "^#?MaxStartups"
+  notify: Restart sshd
+
+- name: Disable SSH root login
+  ansible.builtin.lineinfile:
+    line: "PermitRootLogin no"
+    path: /etc/ssh/sshd_config
+    regexp: "^#?PermitRootLogin"
+  notify: Restart sshd
+
+- name: Set SSH AuthenticationMethods
+  ansible.builtin.lineinfile:
+    insertafter: "^#PubkeyAuthentication yes"
+    line: "AuthenticationMethods publickey"
+    path: /etc/ssh/sshd_config
+    regexp: "^#?AuthenticationMethods"
+  notify: Restart sshd
+
+- name: Set SSH LogLevel
+  ansible.builtin.lineinfile:
+    line: "LogLevel VERBOSE"
+    path: /etc/ssh/sshd_config
+    regexp: "^#?LogLevel"
+  notify: Restart sshd
+
+- name: Set SSH SFTP subsystem
+  ansible.builtin.lineinfile:
+    line: "Subsystem sftp  /usr/lib/openssh/sftp-server -f AUTHPRIV -l INFO"
+    path: /etc/ssh/sshd_config
+    regexp: "^#?Subsystem\\s+sftp"
+  notify: Restart sshd
+
+- name: Check for weak SSH moduli
+  ansible.builtin.shell:
+    cmd: set -o pipefail && awk '$5 < 3071' /etc/ssh/moduli | grep --count .
+    executable: /bin/bash
+  register: common_weak_moduli
+  changed_when: false
+  failed_when: false
+
+- name: Remove weak SSH moduli
+  ansible.builtin.shell:
+    cmd: awk '$5 >= 3071' /etc/ssh/moduli > /etc/ssh/moduli.tmp && mv /etc/ssh/moduli.tmp /etc/ssh/moduli
+    executable: /bin/bash
+  when: common_weak_moduli.stdout | int > 0
+  changed_when: true
+
+- name: Harden SSH client configuration
+  ansible.builtin.copy:
+    dest: /etc/ssh/ssh_config.d/99-hardening.conf
+    mode: "0644"
+    src: etc/ssh/ssh_config.d/99-hardening.conf
+
+# =============================================================================
+# Sudo hardening
+# =============================================================================
+
+- name: Require PTY for sudo
+  ansible.builtin.lineinfile:
+    create: true
+    line: "Defaults use_pty"
+    mode: "0440"
+    path: /etc/sudoers.d/99-hardening
+    validate: "visudo -cf %s"
+
+- name: Set sudo log file
+  ansible.builtin.lineinfile:
+    line: 'Defaults logfile="/var/log/sudo.log"'
+    mode: "0440"
+    path: /etc/sudoers.d/99-hardening
+    validate: "visudo -cf %s"
+
+# =============================================================================
+# System services
+# =============================================================================
+
+- name: Check if apport config exists
+  ansible.builtin.stat:
+    path: /etc/default/apport
+  register: common_apport_config
+
+- name: Disable apport in configuration
+  ansible.builtin.lineinfile:
+    line: "enabled=0"
+    path: /etc/default/apport
+    regexp: "^enabled="
+  when: common_apport_config.stat.exists
+
+- name: Stop and mask apport
+  ansible.builtin.systemd_service:
+    masked: true
+    name: apport
+    state: stopped
+  register: common_apport_mask
+  failed_when:
+    - common_apport_mask is failed
+    - "'Could not find the requested service' not in common_apport_mask.msg"
+
+- name: Mask rsync service
+  ansible.builtin.systemd_service:
+    masked: true
+    name: rsync
+  register: common_rsync_mask
+  failed_when:
+    - common_rsync_mask is failed
+    - "'Could not find the requested service' not in common_rsync_mask.msg"
+
+# =============================================================================
+# Journald
+# =============================================================================
+
+- name: Disable journald forwarding to syslog
+  ansible.builtin.lineinfile:
+    line: "ForwardToSyslog=no"
+    path: /etc/systemd/journald.conf
+    regexp: "^#?ForwardToSyslog="
+
+- name: Set journald storage to persistent
+  ansible.builtin.lineinfile:
+    line: "Storage=persistent"
+    path: /etc/systemd/journald.conf
+    regexp: "^#?Storage="
+
+# =============================================================================
+# Login banners
+# =============================================================================
+
+- name: Set login banner
+  ansible.builtin.copy:
+    dest: /etc/issue
+    mode: "0644"
+    src: etc/issue
+
+- name: Set SSH login banner
+  ansible.builtin.copy:
+    dest: /etc/issue.net
+    mode: "0644"
+    src: etc/issue.net
+
+# =============================================================================
+# Shell environment
+# =============================================================================
+
+- name: Set shell timeout
+  ansible.builtin.copy:
+    dest: /etc/profile.d/tmout.sh
+    mode: "0644"
+    src: etc/profile.d/tmout.sh
+
+# =============================================================================
+# User account hardening
+# =============================================================================
+
+- name: Lock root account
+  ansible.builtin.user:
+    name: root
+    password_lock: true
+
+# =============================================================================
+# Maintenance scripts
+# =============================================================================
+
+- name: Create maintenance scripts directory
+  ansible.builtin.file:
+    mode: "0755"
+    path: /usr/local/lib/maintenance.d
+    state: directory
+
+- name: Install maintenance script
+  ansible.builtin.copy:
+    dest: /usr/local/bin/maintenance
+    mode: "0755"
+    src: usr/local/bin/maintenance
+
+- name: Install maintenance scripts
+  ansible.builtin.copy:
+    dest: /usr/local/lib/maintenance.d/
+    mode: "0755"
+    src: usr/local/lib/maintenance.d/

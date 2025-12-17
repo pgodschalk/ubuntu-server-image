@@ -1,0 +1,21 @@
+#cloud-config
+hostname: ubuntu-vagrant
+
+packages:
+  - qemu-guest-agent
+
+runcmd:
+  - systemctl enable --now qemu-guest-agent
+
+users:
+  - name: vagrant
+    gecos: Vagrant User
+    groups: [sudo, adm]
+    lock_passwd: false
+    # Password: vagrant (SHA-512 hash)
+    passwd: $6$saltsalt$QXr1010vBcXmYfWRQ4RAnhkx/Wc76ih4qy3p7rNHiVfPtwPFiqcKmtzjD3po/wq.Q1iU7kWRqznVSOBVAULLJ0
+    ssh_authorized_keys:
+      # Vagrant default key (ed25519)
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN1YdxBpNlzxDqfJyw/QKow1F+wvG9hXGoqiysfJOn5Y vagrant
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash

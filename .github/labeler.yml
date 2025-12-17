@@ -1,0 +1,23 @@
+ci:
+  - changed-files:
+      - any-glob-to-any-file: ".github/workflows/**"
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "pyproject.toml"
+          - "uv.lock"
+          - "ansible/requirements.yml"
+          - "packer/*.pkr.hcl"
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "*.md"
+          - "**/*.md"
+          - "LICENSE"
+
+security:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/workflows/codeql.yml"

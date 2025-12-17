@@ -1,0 +1,6 @@
+[DEFAULT]
+banaction=ufw
+banaction_allports=ufw
+
+[sshd]
+enabled=false

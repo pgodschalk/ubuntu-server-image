@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+dynamic = ["version"]
+name = "ubuntu-server-image"
+dependencies = ["ansible>=13.1.0"]
+requires-python = ">=3.14"
+authors = [{ name = "Patrick Godschalk", email = "patrick@kernelpanics.nl" }]
+description = "Provisions a basic Ubuntu server"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE.txt"]
+keywords = ["ubuntu", "server", "packer", "ansible", "infrastructure"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: System Administrators",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: System :: Installation/Setup",
+  "Topic :: System :: Systems Administration",
+]
+
+[project.urls]
+Repository = "https://github.com/pgodschalk/ubuntu-server-image.git"
+Issues = "https://github.com/pgodschalk/ubuntu-server-image/issues"
+Download = "https://github.com/pgodschalk/ubuntu-server-image/releases"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.targets.wheel]
+bypass-selection = true
+
+[tool.hatch.build.targets.editable]
+bypass-selection = true
+
+[dependency-groups]
+dev = [
+  "ansible-lint>=25.12.1",
+  "molecule>=25.12.0",
+  "molecule-plugins[docker]>=25.8.12",
+  "pytest-testinfra>=10.2.2",
+]

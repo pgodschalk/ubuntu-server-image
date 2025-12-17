@@ -1,0 +1,13 @@
+---
+- name: Prepare
+  hosts: all
+  become: true
+  tasks:
+    - name: Install packages present on Ubuntu Server
+      ansible.builtin.apt:
+        name:
+          - openssh-server
+          - ufw
+          - unattended-upgrades
+        state: present
+        update_cache: true

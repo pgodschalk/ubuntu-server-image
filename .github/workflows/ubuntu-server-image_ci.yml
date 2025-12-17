@@ -1,0 +1,445 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+---
+name: ubuntu-server-image
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  release:
+    types:
+      - published
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint-ansible:
+    name: Lint Ansible
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867 # v7.1.6
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked --group dev
+
+      - name: Install Ansible collections
+        run: |
+          uv run ansible-galaxy collection install \
+            --requirements-file requirements.yml
+        working-directory: ansible
+
+      - name: Run ansible-lint
+        run: uv run ansible-lint
+        working-directory: ansible
+
+  test:
+    name: Test
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867 # v7.1.6
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked --group dev
+
+      - name: Install Ansible collections
+        run: |
+          uv run ansible-galaxy collection install \
+            --requirements-file requirements.yml
+        working-directory: ansible
+
+      - name: Test Ansible with Molecule
+        run: |
+          for role in ansible/roles/*/; do
+            echo "Testing role: $role"
+            (cd "$role" && uv run molecule test)
+          done
+
+  lint-packer:
+    name: Lint Packer
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Packer
+        uses: hashicorp/setup-packer@1aa358be5cf73883762b302a3a03abd66e75b232 # v3.1.0
+
+      - name: Initialize Packer
+        run: packer init .
+        working-directory: packer
+
+      - name: Generate build key
+        run: ssh-keygen -t ed25519 -f build_key -N ""
+        working-directory: packer
+
+      - name: Validate Packer
+        run: packer validate -syntax-only .
+        working-directory: packer
+
+      - name: Format check Packer
+        run: packer fmt -check -diff .
+        working-directory: packer
+
+  lint-markdown:
+    name: Lint Markdown
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Lint and format check with markdownlint-cli2
+        uses: DavidAnson/markdownlint-cli2-action@07035fd053f7be764496c0f8d8f9f41f98305101 # v22.0.0
+        with:
+          globs: |
+            **/.github/PULL_REQUEST_TEMPLATE
+            **/*.md
+
+  lint-shell:
+    name: Lint Shell
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install shfmt
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes shfmt
+        env:
+          DEBIAN_FRONTEND: noninteractive
+
+      - name: Lint with shellcheck
+        run: |
+          shopt -s globstar nullglob
+          files=(**/*.sh **/usr/local/bin/maintenance)
+
+          if [[ ${#files[@]} -gt 0 ]]; then
+            shellcheck --shell=bash "${files[@]}"
+          fi
+
+      - name: Format check with shfmt
+        run: |
+          shopt -s globstar nullglob
+          files=(**/*.env* **/*.sh **/usr/local/bin/maintenance)
+
+          if [[ ${#files[@]} -gt 0 ]]; then
+            shfmt --diff --indent 2 --case-indent --binary-next-line \
+              "${files[@]}"
+          fi
+
+  lint-toml:
+    name: Lint TOML
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up bun
+        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
+
+      - name: Cache global bun packages
+        uses: actions/cache@v5
+        with:
+          key: bun-global-toml-${{ runner.os }}-taplo
+          path: ~/.bun/install/global
+
+      - name: Install Taplo
+        run: bun add --global @taplo/cli
+
+      - name: Lint and format check with Taplo
+        run: |
+          shopt -s globstar nullglob
+          taplo format --check **/*.toml
+          taplo lint **/*.toml
+
+  lint-yaml:
+    name: Lint YAML
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up bun
+        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
+
+      - name: Cache global bun packages
+        uses: actions/cache@v5
+        with:
+          key: bun-global-yaml-${{ runner.os }}-prettier
+          path: ~/.bun/install/global
+
+      - name: Install Prettier
+        run: bun add --global prettier
+
+      - name: Format check with Prettier
+        run: prettier --check --no-config "**/*.{yml,yaml}"
+
+  lint-vagrant:
+    name: Lint Vagrant
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@f8d7259c7a66155a7c4a157a1a10ca601f186594 # v1.271.0
+        with:
+          ruby-version: "3.4"
+
+      - name: Install RuboCop
+        run: gem install rubocop
+
+      - name: Lint with RuboCop
+        run: rubocop --format github Vagrantfile
+
+      - name: Set up Vagrant
+        run: |
+          wget --quiet --output-document=- https://apt.releases.hashicorp.com/gpg | \
+            sudo gpg --dearmor --output /usr/share/keyrings/hashicorp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
+            https://apt.releases.hashicorp.com $(lsb_release --codename --short) main" | \
+            sudo tee /etc/apt/sources.list.d/hashicorp.list
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes \
+            libvirt-dev \
+            vagrant
+          vagrant plugin install vagrant-libvirt
+        env:
+          DEBIAN_FRONTEND: noninteractive
+
+      - name: Validate Vagrantfile
+        run: vagrant validate
+
+  build:
+    name: Build image (${{ matrix.arch }})
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
+      security-events: write
+    needs:
+      - lint-ansible
+      - lint-packer
+      - lint-markdown
+      - lint-shell
+      - lint-toml
+      - lint-vagrant
+      - lint-yaml
+      - test
+    if: github.event_name == 'release'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        include:
+          # TODO(pgodschalk): Enable arm64 when GitHub ARM runners support KVM
+          # - arch: arm64
+          #   runner: ubuntu-24.04-arm
+          - arch: amd64
+            runner: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867 # v7.1.6
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Install Ansible collections
+        run: |
+          uv run ansible-galaxy collection install \
+            --requirements-file requirements.yml
+        working-directory: ansible
+
+      - name: Set up Packer
+        uses: hashicorp/setup-packer@1aa358be5cf73883762b302a3a03abd66e75b232 # v3.1.0
+
+      - name: Initialize Packer
+        run: packer init .
+        working-directory: packer
+
+      - name: Generate build key
+        run: ssh-keygen -t ed25519 -f build_key -N ""
+        working-directory: packer
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes \
+            ovmf \
+            qemu-efi-aarch64 \
+            qemu-system-arm \
+            qemu-system-x86 \
+            qemu-utils \
+            xorriso
+        env:
+          DEBIAN_FRONTEND: noninteractive
+
+      - name: Install libguestfs-tools
+        run: |
+          sudo apt-get install --no-install-recommends --yes \
+            libguestfs-tools \
+            linux-image-generic
+          sudo chmod 0644 /boot/vmlinuz-*
+        env:
+          DEBIAN_FRONTEND: noninteractive
+
+      - name: Build image
+        run: |
+          packer build -var "arch=${{ matrix.arch }}" .
+          mv packer-manifest.json packer-manifest-${{ matrix.arch }}.json
+          mv output-ubuntu/packer-ubuntu \
+            output-ubuntu/ubuntu-server-image_${{ matrix.arch }}.qcow2
+          mv output-ubuntu/efivars.fd \
+            output-ubuntu/ubuntu-server-image_${{ matrix.arch }}_efivars.fd
+          mv packer_ubuntu_sha256.checksum \
+            ubuntu-server-image_${{ matrix.arch }}_SHA256SUMS.sha256
+        working-directory: packer
+
+      - name: Extract filesystem for SBOM generation
+        run: |
+          mkdir --parents /tmp/rootfs
+          sudo virt-copy-out \
+            --add packer/output-ubuntu/ubuntu-server-image_${{ matrix.arch }}.qcow2 \
+            / /tmp/rootfs
+          sudo chown --recursive "$(id --user):$(id --group)" /tmp/rootfs
+          sudo chmod --recursive +r /tmp/rootfs
+
+      - name: Create Syft config
+        run: |
+          cat > .syft.yaml << 'EOF'
+          file:
+            metadata:
+              selection: none
+          source:
+            name: ubuntu-server-image
+            version: ${{ github.event.release.tag_name }}
+          EOF
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@43a17d6e7add2b5535efe4dcae9952337c479a93 # v0.20.11
+        with:
+          path: /tmp/rootfs
+          artifact-name: ubuntu-server-image_${{ matrix.arch }}_sbom.cdx.json
+          output-file: packer/ubuntu-server-image_${{ matrix.arch }}_sbom.cdx.json
+          format: cyclonedx-json
+          dependency-snapshot: true
+          config: .syft.yaml
+
+      - name: Scan filesystem for vulnerabilities
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
+        with:
+          scan-type: rootfs
+          scan-ref: /tmp/rootfs
+          format: sarif
+          output: packer/ubuntu-server-image_${{ matrix.arch }}_trivy.sarif
+          skip-dirs: var/lib/apt/lists
+          scanners: vuln,secret,misconfig
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: packer/ubuntu-server-image_${{ matrix.arch }}_trivy.sarif
+          category: trivy-${{ matrix.arch }}
+
+      - name: Sign checksum with GPG
+        run: |
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          gpg --batch --yes --pinentry-mode loopback \
+            --passphrase "$GPG_PASSPHRASE" --armor --detach-sign \
+            packer/ubuntu-server-image_${{ matrix.arch }}_SHA256SUMS.sha256
+          mv packer/ubuntu-server-image_${{ matrix.arch }}_SHA256SUMS.sha256.asc \
+            packer/ubuntu-server-image_${{ matrix.arch }}_SHA256SUMS.sha256.sig
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            packer/output-ubuntu/ubuntu-server-image_${{ matrix.arch }}.qcow2
+            packer/output-ubuntu/ubuntu-server-image_${{ matrix.arch }}_efivars.fd
+            packer/packer-manifest-${{ matrix.arch }}.json
+            packer/ubuntu-server-image_${{ matrix.arch }}_SHA256SUMS.sha256
+            packer/ubuntu-server-image_${{ matrix.arch }}_SHA256SUMS.sha256.sig
+
+      - name: Attest SBOM
+        uses: actions/attest-sbom@v3
+        with:
+          subject-path: packer/output-ubuntu/ubuntu-server-image_${{ matrix.arch }}.qcow2
+          sbom-path: packer/ubuntu-server-image_${{ matrix.arch }}_sbom.cdx.json
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ubuntu-server-${{ matrix.arch }}
+          path: |
+            packer/output-ubuntu/ubuntu-server-image_${{ matrix.arch }}.qcow2
+            packer/output-ubuntu/ubuntu-server-image_${{ matrix.arch }}_efivars.fd
+            packer/packer-manifest-${{ matrix.arch }}.json
+            packer/ubuntu-server-image_${{ matrix.arch }}_SHA256SUMS.sha256
+            packer/ubuntu-server-image_${{ matrix.arch }}_SHA256SUMS.sha256.sig
+
+      - name: Upload release assets
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            packer/output-ubuntu/ubuntu-server-image_${{ matrix.arch }}.qcow2 \
+            packer/output-ubuntu/ubuntu-server-image_${{ matrix.arch }}_efivars.fd \
+            packer/packer-manifest-${{ matrix.arch }}.json \
+            packer/ubuntu-server-image_${{ matrix.arch }}_SHA256SUMS.sha256 \
+            packer/ubuntu-server-image_${{ matrix.arch }}_SHA256SUMS.sha256.sig
+        env:
+          GH_TOKEN: ${{ github.token }}
