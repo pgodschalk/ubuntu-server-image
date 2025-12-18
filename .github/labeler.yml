@@ -15,7 +15,7 @@ documentation:
       - any-glob-to-any-file:
           - "*.md"
           - "**/*.md"
-          - "LICENSE"
+          - "LICENSE.txt"
 
 security:
   - changed-files:
