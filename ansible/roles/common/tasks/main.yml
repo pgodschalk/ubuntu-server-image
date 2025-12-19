@@ -28,9 +28,9 @@
   ansible.builtin.command:
     cmd: snap get system refresh.timer
   when: common_snap_available.stat.exists
-  register: common_snap_refresh_timer
-  changed_when: false
   failed_when: false
+  changed_when: false
+  register: common_snap_refresh_timer
 
 - name: Configure snap refresh schedule
   ansible.builtin.command:
@@ -44,9 +44,9 @@
   ansible.builtin.command:
     cmd: snap get system refresh.hold
   when: common_snap_available.stat.exists
-  register: common_snap_refresh_hold
-  changed_when: false
   failed_when: false
+  changed_when: false
+  register: common_snap_refresh_hold
 
 - name: Clear any snap refresh holds
   ansible.builtin.command:
@@ -60,8 +60,8 @@
   ansible.builtin.command:
     cmd: snap refresh
   when: common_snap_available.stat.exists
-  register: common_snap_refresh
   changed_when: "'All snaps up to date' not in common_snap_refresh.stderr"
+  register: common_snap_refresh
 
 - name: Install apparmor-utils
   ansible.builtin.apt:
@@ -167,8 +167,8 @@
 - name: Check AIDE database attributes
   ansible.builtin.command:
     cmd: lsattr -d /var/lib/aide/aide.db
-  register: common_aide_db_attrs
   changed_when: false
+  register: common_aide_db_attrs
   tags:
     - molecule-notest
 
@@ -645,9 +645,9 @@
   ansible.builtin.shell:
     cmd: set -o pipefail && awk '$5 < 3071' /etc/ssh/moduli | grep --count .
     executable: /bin/bash
-  register: common_weak_moduli
-  changed_when: false
   failed_when: false
+  changed_when: false
+  register: common_weak_moduli
 
 - name: Remove weak SSH moduli
   ansible.builtin.shell:
@@ -702,19 +702,19 @@
     masked: true
     name: apport
     state: stopped
-  register: common_apport_mask
   failed_when:
     - common_apport_mask is failed
     - "'Could not find the requested service' not in common_apport_mask.msg"
+  register: common_apport_mask
 
 - name: Mask rsync service
   ansible.builtin.systemd_service:
     masked: true
     name: rsync
-  register: common_rsync_mask
   failed_when:
     - common_rsync_mask is failed
     - "'Could not find the requested service' not in common_rsync_mask.msg"
+  register: common_rsync_mask
 
 # =============================================================================
 # Journald
