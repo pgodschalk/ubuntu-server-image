@@ -20,4 +20,3 @@ users:
       - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN1YdxBpNlzxDqfJyw/QKow1F+wvG9hXGoqiysfJOn5Y vagrant
     sudo: ALL=(ALL) NOPASSWD:ALL
     shell: /bin/bash
-...

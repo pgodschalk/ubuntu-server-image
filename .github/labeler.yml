@@ -22,4 +22,3 @@ security:
   - changed-files:
       - any-glob-to-any-file:
           - ".github/workflows/codeql.yml"
-...

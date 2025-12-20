@@ -162,7 +162,6 @@ cat >"${CLOUD_INIT_DIR}/meta-data" <<EOF
 ---
 instance-id: iid-vagrant-$(uuidgen | cut -d- -f1)
 local-hostname: ubuntu-server-image
-...
 EOF
 
 # Create cloud-init ISO using hdiutil (macOS native)

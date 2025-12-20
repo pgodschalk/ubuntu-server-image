@@ -5,4 +5,3 @@ ethernets:
     match:
       driver: virtio_net
     dhcp4: true
-...

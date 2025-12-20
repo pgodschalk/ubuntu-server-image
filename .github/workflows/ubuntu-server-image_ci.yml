@@ -445,4 +445,3 @@ jobs:
             packer/ubuntu-server-image_${{ matrix.arch }}_SHA256SUMS.sha256.sig
         env:
           GH_TOKEN: ${{ github.token }}
-...

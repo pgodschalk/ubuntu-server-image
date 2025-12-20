@@ -11,4 +11,3 @@
           - unattended-upgrades
         state: present
         update_cache: true
-...

@@ -28,4 +28,3 @@
   ansible.builtin.command:
     cmd: pam-auth-update --package
   changed_when: true
-...
