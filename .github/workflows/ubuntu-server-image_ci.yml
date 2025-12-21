@@ -143,7 +143,7 @@ jobs:
       - name: Lint with shellcheck
         run: |
           shopt -s globstar nullglob
-          files=(**/*.sh **/usr/local/bin/maintenance)
+          files=(**/*.sh **/usr/local/sbin/maintenance)
 
           if [[ ${#files[@]} -gt 0 ]]; then
             shellcheck --shell=bash "${files[@]}"
@@ -152,7 +152,7 @@ jobs:
       - name: Format check with shfmt
         run: |
           shopt -s globstar nullglob
-          files=(**/*.env* **/*.sh **/usr/local/bin/maintenance)
+          files=(**/*.env* **/*.sh **/usr/local/sbin/maintenance)
 
           if [[ ${#files[@]} -gt 0 ]]; then
             shfmt --diff --indent 2 --case-indent --binary-next-line \

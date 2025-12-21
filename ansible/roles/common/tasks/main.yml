@@ -779,9 +779,9 @@
 
 - name: Install maintenance script
   ansible.builtin.copy:
-    dest: /usr/local/bin/maintenance
+    dest: /usr/local/sbin/maintenance
     mode: "0755"
-    src: usr/local/bin/maintenance
+    src: usr/local/sbin/maintenance
 
 - name: Install maintenance scripts
   ansible.builtin.copy:
