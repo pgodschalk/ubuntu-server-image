@@ -34,15 +34,15 @@ jobs:
         id: build-box
         run: ./build-box.sh
 
-      - name: Set up HCP CLI
-        uses: hashicorp/hcp-setup-action@fa6934c14c661dfbe9b6cf9c47ddb41759d625aa # v0
-        with:
-          project_id: ${{ vars.HCP_PROJECT_ID }}
-
       - name: Authenticate to HCP
         uses: hashicorp/hcp-auth-action@b11d0bff4bbe76283448ddca08a4a4e93c5ed4b9 # v0.1.0
         with:
           workload_identity_provider: ${{ vars.HCP_WORKLOAD_IDENTITY_PROVIDER }}
+
+      - name: Set up HCP CLI
+        uses: hashicorp/hcp-setup-action@fa6934c14c661dfbe9b6cf9c47ddb41759d625aa # v0
+        with:
+          project_id: ${{ vars.HCP_PROJECT_ID }}
 
       - name: Set up Vagrant
         run: brew install --cask vagrant
