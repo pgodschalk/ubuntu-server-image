@@ -498,6 +498,10 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Install QEMU
+        if: steps.check.outputs.changed == 'true'
+        run: brew install qemu
+
       - name: Build Vagrant box
         if: steps.check.outputs.changed == 'true'
         id: build-box
