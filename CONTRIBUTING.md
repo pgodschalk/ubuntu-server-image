@@ -31,13 +31,6 @@ To set up a development environment, please follow these steps:
    ssh-keygen -t ed25519 -f build_key -N ""
    ```
 
-4. Set up Vagrant
-
-   ```bash
-    ./build-box.sh
-    vagrant box add --name ubuntu-server-image ubuntu-server-image.box
-   ```
-
 ## Issues and feature requests
 
 You've found a bug in the source code, a mistake in the documentation or maybe
