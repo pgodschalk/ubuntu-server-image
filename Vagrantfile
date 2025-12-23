@@ -14,7 +14,11 @@ Vagrant.configure('2') do |config|
 
   # Every Vagrant development environment requires a box. You can search for
   # boxes at https://vagrantcloud.com/search.
-  config.vm.box = 'ubuntu-server-image'
+  config.vm.box = if ENV['VAGRANT_BOX_LOCAL']
+                    'ubuntu-server-image'
+                  else
+                    'pgodschalk/ubuntu-server-image'
+                  end
 
   # Disable automatic box update checking. If you disable this, then
   # boxes will only be checked for updates when the user runs
