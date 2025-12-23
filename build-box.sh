@@ -363,3 +363,8 @@ msg "${GREEN}Box created: ${SCRIPT_DIR}/${BOX_NAME}.box${NOFORMAT}"
 msg ""
 msg "To add the box:"
 msg "  vagrant box add --name ubuntu-server-image ${SCRIPT_DIR}/${BOX_NAME}.box"
+
+# Output version for CI
+if [[ -n "${GITHUB_OUTPUT-}" ]]; then
+  echo "ubuntu_version=${UBUNTU_VERSION}" >>"${GITHUB_OUTPUT}"
+fi

@@ -472,3 +472,50 @@ jobs:
             packer/ubuntu-server-image_${{ matrix.arch }}_SHA256SUMS.sha256.sig
         env:
           GH_TOKEN: ${{ github.token }}
+
+  build-vagrant-box:
+    name: Build Vagrant box
+    permissions:
+      contents: read
+      id-token: write
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      contains(join(github.event.commits.*.modified, ','), 'build-box.sh') ||
+      contains(join(github.event.commits.*.modified, ','), 'cloud-init/') ||
+      contains(join(github.event.commits.*.added, ','), 'build-box.sh') ||
+      contains(join(github.event.commits.*.added, ','), 'cloud-init/')
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Build Vagrant box
+        id: build-box
+        run: ./build-box.sh
+
+      - name: Authenticate to HCP
+        uses: hashicorp/hcp-auth-action@b11d0bff4bbe76283448ddca08a4a4e93c5ed4b9 # v0.1.0
+        with:
+          workload_identity_provider: ${{ vars.HCP_WORKLOAD_IDENTITY_PROVIDER }}
+
+      - name: Set up Vagrant
+        run: brew install --cask vagrant
+
+      - name: Publish to HCP Vagrant Registry
+        run: |
+          SHORT_SHA="${{ github.sha }}"
+          SHORT_SHA="${SHORT_SHA:0:7}"
+          CHECKSUM=$(shasum -a 256 ubuntu-server-image.box | awk '{print $1}')
+          VAGRANT_CLOUD_TOKEN=$(hcp auth print-access-token) \
+            vagrant cloud publish \
+              --force \
+              --no-private \
+              --release \
+              --checksum "${CHECKSUM}" \
+              --checksum-type sha256 \
+              "${{ vars.HCP_VAGRANT_BOX }}" \
+              "${{ steps.build-box.outputs.ubuntu_version }}.0.dev.${SHORT_SHA}" \
+              utm \
+              ubuntu-server-image.box
