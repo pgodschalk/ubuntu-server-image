@@ -1,0 +1,65 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+---
+name: Vagrant box
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - build-box.sh
+      - cloud-init/**
+      - .github/workflows/vagrant-box.yml
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and publish
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install QEMU
+        run: brew install qemu
+
+      - name: Build Vagrant box
+        id: build-box
+        run: ./build-box.sh
+
+      - name: Set up HCP CLI
+        uses: hashicorp/hcp-setup-action@fa6934c14c661dfbe9b6cf9c47ddb41759d625aa # v0
+        with:
+          project_id: ${{ vars.HCP_PROJECT_ID }}
+
+      - name: Authenticate to HCP
+        uses: hashicorp/hcp-auth-action@b11d0bff4bbe76283448ddca08a4a4e93c5ed4b9 # v0.1.0
+        with:
+          workload_identity_provider: ${{ vars.HCP_WORKLOAD_IDENTITY_PROVIDER }}
+
+      - name: Set up Vagrant
+        run: brew install --cask vagrant
+
+      - name: Publish to HCP Vagrant Registry
+        run: |
+          SHORT_SHA="${{ github.sha }}"
+          SHORT_SHA="${SHORT_SHA:0:7}"
+          CHECKSUM=$(shasum -a 256 ubuntu-server-image.box | awk '{print $1}')
+          VAGRANT_CLOUD_TOKEN=$(hcp auth print-access-token) \
+            vagrant cloud publish \
+              --force \
+              --no-private \
+              --release \
+              --checksum "${CHECKSUM}" \
+              --checksum-type sha256 \
+              "${{ vars.HCP_VAGRANT_BOX }}" \
+              "${{ steps.build-box.outputs.ubuntu_version }}.0.dev.${SHORT_SHA}" \
+              utm \
+              ubuntu-server-image.box
