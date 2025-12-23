@@ -1,0 +1,22 @@
+---
+version: 3
+
+images:
+  base_image:
+    name: registry.fedoraproject.org/fedora:43
+
+dependencies:
+  ansible_core:
+    package_pip: ansible-core
+  ansible_runner:
+    package_pip: ansible-runner
+  system:
+    - openssh-clients
+  galaxy: requirements.yml
+
+additional_build_steps:
+  prepend_base:
+    - RUN dnf install -y python3 python3-pip && dnf clean all
+
+options:
+  package_manager_path: /usr/bin/dnf
