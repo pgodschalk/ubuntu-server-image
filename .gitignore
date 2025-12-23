@@ -242,5 +242,8 @@ packer/*.checksum
 cloud-init/meta-data
 
 !ansible/roles/common/files/usr/
+!ansible/roles/common/files/usr/local/
 !ansible/roles/common/files/usr/local/lib/
 !ansible/roles/common/files/usr/local/lib/**
+!ansible/roles/common/files/usr/local/sbin/
+!ansible/roles/common/files/usr/local/sbin/**
