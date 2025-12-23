@@ -159,7 +159,6 @@ msg "${BLUE}Creating cloud-init ISO...${NOFORMAT}"
 [[ -f "${CLOUD_INIT_DIR}/user-data" ]] \
   || die "Missing ${CLOUD_INIT_DIR}/user-data"
 cat >"${CLOUD_INIT_DIR}/meta-data" <<EOF
----
 instance-id: iid-vagrant-$(uuidgen | cut -d- -f1)
 local-hostname: ubuntu-server-image
 EOF
