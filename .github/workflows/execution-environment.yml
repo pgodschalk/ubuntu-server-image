@@ -72,7 +72,7 @@ jobs:
           attests: type=sbom,generator=image
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          context: ansible/context
+          context: ./ansible/context
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64
           push: true
